@@ -227,12 +227,12 @@ class Game:
     # Play the game
     def play(self):
         while True:
-            self.display_board()
-            print(f"Player turn: {'W' if self.current_player == PLAYER1 else 'B'}")
+            #self.display_board()
+            #print(f"Player turn: {'W' if self.current_player == PLAYER1 else 'B'}")
             
             # Show the current piece count
-            print(f"White pieces: {self.p1_pieces}/{NUM_PIECES}")
-            print(f"Black pieces: {self.p2_pieces}/{NUM_PIECES}")
+            #print(f"White pieces: {self.p1_pieces}/{NUM_PIECES}")
+            #print(f"Black pieces: {self.p2_pieces}/{NUM_PIECES}")
 
             # Determine if the current player should place or move
             current_pieces = self.p1_pieces if self.current_player == PLAYER1 else self.p2_pieces

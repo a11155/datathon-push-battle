@@ -300,8 +300,8 @@ def main():
     analyzer = GameAnalyzer()
 
     p1 = DQNAgent(PLAYER1)
-    p2 = SmartAgent(PLAYER2)
-    p1.load("dqn_model_episode_100.pth")
+    p2 = RandomAgent(PLAYER2)
+    p1.load("dqn1_250.pth")
     analyzer.run_benchmark(10, p1, p2)  # Run 10 games
     
     # Export results
