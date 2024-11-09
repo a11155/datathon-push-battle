@@ -1,3 +1,4 @@
+
 import json
 import time
 from collections import defaultdict
@@ -20,72 +21,63 @@ class GameAnalyzer:
             'timeouts': defaultdict(int)
         }
 
-    def analyze_game(self, game_record: Dict) -> None:
-        """Analyze a single game record"""
-        self.stats['total_games'] += 1
-        
-        # Update matchup stats
-        winner = game_record['winner']
-        matchup = f"{game_record['p1_agent']} vs {game_record['p2_agent']}"
-        
-        if winner == PLAYER1:
-            self.stats['matchup_stats'][matchup]['wins'] += 1
-        elif winner == PLAYER2:
-            self.stats['matchup_stats'][matchup]['losses'] += 1
-        else:
-            self.stats['matchup_stats'][matchup]['draws'] += 1
+    def handle_move(self, game, move):
+        """Places the move if valid and returns 'forfeit', True, or False"""
+        if not isinstance(move, (list, tuple)) or len(move) < 2:
+            print(f"Invalid move format by Player {'P1' if game.current_player == PLAYER1 else 'P2'}")
+            return "forfeit"
 
-        # Analyze moves
-        for turn, move_data in enumerate(game_record['moves']):
-            phase = 'opening' if turn < 8 else 'midgame' if turn < 16 else 'endgame'
-            
-            if move_data['type'] == 'random':
-                self.stats['random_moves_used'][move_data['player']] += 1
-            
-            if move_data.get('time', 0) > 0.9:  # Close to timeout
-                self.stats['timeouts'][phase] += 1
-                
-            self.stats['move_stats'][phase][move_data['type']] += 1
-            
-        # Record game length
-        self.stats['game_lengths'][len(game_record['moves'])] += 1
+        if len(move) != 2 and len(move) != 4:
+            print(f"Invalid move format by Player {'P1' if game.current_player == PLAYER1 else 'P2'}")
+            return "forfeit"
 
-    def run_benchmark(self, num_games: int = 1) -> None:
-        """Run benchmark games between agents"""
-        from smart_agent import SmartAgent  # Your agent
-        from random_agent import RandomAgent
-        
-        print(f"Running {num_games} benchmark games...")
-        
-        for game_num in range(num_games):
-            print(f"\nGame {game_num + 1}/{num_games}")
-            # Run game with both players as P1 and P2
-            game_record = self.play_game(SmartAgent(PLAYER1), RandomAgent(PLAYER2))
-            self.analyze_game(game_record)
-            
-            print(f"Game {game_num + 1}a complete: {game_record['p1_agent']} vs {game_record['p2_agent']}")
-            
-            game_record = self.play_game(RandomAgent(PLAYER1), RandomAgent(PLAYER2))
-            self.analyze_game(game_record)
-            
-            print(f"Game {game_num + 1}b complete: {game_record['p1_agent']} vs {game_record['p2_agent']}")
+        try:
+            print(move)
+            # Convert move elements to integers if they aren't already
+            move = [int(x) if isinstance(x, (int, str)) else x for x in move]
+
+            if game.turn_count < 17:
+                if game.is_valid_placement(move[0], move[1]):
+                    game.place_checker(move[0], move[1])
+                else:
+                    print(f"Invalid placement by")
+                    return "forfeit"
+            else:
+                if game.is_valid_move(move[0], move[1], move[2], move[3]):
+                    game.move_checker(move[0], move[1], move[2], move[3])
+                else:
+                    print(f"Invalid move by {game.current_player}")
+                    return "forfeit"
+            return True
+        except Exception as e:
+            print(f"Error handling move: {str(e)}")
+            return False
 
     def play_game(self, p1_agent, p2_agent) -> Dict:
         """Play a single game and record data"""
         game = Game()
         moves = []
-        max_moves = 100  # Safety limit to prevent infinite games
+        max_moves = 100  # Safety limit
         move_count = 0
         
+        # Random moves tracking
+        p1_random = 5
+        p2_random = 5
+        
         while move_count < max_moves:
+            game.turn_count += 1
             start_time = time.time()
             current_agent = p1_agent if game.current_player == PLAYER1 else p2_agent
+            current_random = p1_random if game.current_player == PLAYER1 else p2_random
             
+            # First attempt
+
+            print("starting")
             try:
                 move = current_agent.get_best_move(game)
+
                 move_time = time.time() - start_time
                 
-                # Record move data
                 move_record = {
                     'player': game.current_player,
                     'move': move,
@@ -93,81 +85,132 @@ class GameAnalyzer:
                     'type': 'valid'
                 }
                 
-                # Validate and execute move
-                is_valid = False
-                if len(move) == 2:  # Placement move
-                    if move_count < 16 and game.is_valid_placement(move[0], move[1]):
-                        game.place_checker(move[0], move[1])
-                        is_valid = True
-                else:  # Movement move
-                    if move_count >= 16 and len(move) == 4:
-                        if game.is_valid_move(move[0], move[1], move[2], move[3]):
-                            game.move_checker(move[0], move[1], move[2], move[3])
-                            is_valid = True
-                
-                if not is_valid:
-                    move_record['type'] = 'invalid'
-                    # Make a random valid move instead
-                    if move_count < 16:
-                        valid_moves = [(r, c) for r in range(BOARD_SIZE) for c in range(BOARD_SIZE) 
-                                     if game.board[r][c] == EMPTY]
-                    else:
-                        valid_moves = []
-                        for r0 in range(BOARD_SIZE):
-                            for c0 in range(BOARD_SIZE):
-                                if game.board[r0][c0] == game.current_player:
-                                    for r1 in range(BOARD_SIZE):
-                                        for c1 in range(BOARD_SIZE):
-                                            if game.board[r1][c1] == EMPTY:
-                                                if game.is_valid_move(r0, c0, r1, c1):
-                                                    valid_moves.append((r0, c0, r1, c1))
+                result = self.handle_move(game, move)
+                if result == "forfeit":
+                    moves.append(move_record)
+                    return {
+                        'p1_agent': p1_agent.__class__.__name__,
+                        'p2_agent': p2_agent.__class__.__name__,
+                        'winner': PLAYER2 if game.current_player == PLAYER1 else PLAYER1,
+                        'moves': moves,
+                        'total_moves': move_count,
+                        'forfeit': True
+                    }
+                elif not result:
+                    # Second attempt
+                    start_time = time.time()
+                    move = current_agent.get_best_move(game)
+                    move_time = time.time() - start_time
                     
-                    if valid_moves:
-                        random_move = valid_moves[0]  # Take first valid move
-                        if len(random_move) == 2:
-                            game.place_checker(random_move[0], random_move[1])
+                    move_record = {
+                        'player': game.current_player,
+                        'move': move,
+                        'time': move_time,
+                        'type': 'valid'
+                    }
+                    
+                    result = self.handle_move(game, move)
+                    if result == "forfeit" or not result:
+                        # Use random move if available
+                        if current_random > 0:
+                            random_agent = RandomAgent(player=game.current_player)
+                            random_move = random_agent.get_best_move(game)
+                            if self.handle_move(game, random_move):
+                                move_record['type'] = 'random'
+                                if game.current_player == PLAYER1:
+                                    p1_random -= 1
+                                else:
+                                    p2_random -= 1
+                            else:
+                                # Forfeit if random move fails
+                                return {
+                                    'p1_agent': p1_agent.__class__.__name__,
+                                    'p2_agent': p2_agent.__class__.__name__,
+                                    'winner': PLAYER2 if game.current_player == PLAYER1 else PLAYER1,
+                                    'moves': moves,
+                                    'total_moves': move_count,
+                                    'forfeit': True
+                                }
                         else:
-                            game.move_checker(random_move[0], random_move[1], 
-                                            random_move[2], random_move[3])
-                        move_record['type'] = 'random'
-                
+                            # No random moves left - forfeit
+                            return {
+                                'p1_agent': p1_agent.__class__.__name__,
+                                'p2_agent': p2_agent.__class__.__name__,
+                                'winner': PLAYER2 if game.current_player == PLAYER1 else PLAYER1,
+                                'moves': moves,
+                                'total_moves': move_count,
+                                'forfeit': True
+                            }
+
                 moves.append(move_record)
                 
             except Exception as e:
                 print(f"Error during move: {str(e)}")
-                moves.append({
+                move_record = {
                     'player': game.current_player,
                     'error': str(e),
                     'time': time.time() - start_time,
                     'type': 'error'
-                })
-                # Make a random valid move on error
-                if move_count < 16:
-                    valid_moves = [(r, c) for r in range(BOARD_SIZE) for c in range(BOARD_SIZE) 
-                                 if game.board[r][c] == EMPTY]
-                    if valid_moves:
-                        r, c = valid_moves[0]
-                        game.place_checker(r, c)
+                }
+                moves.append(move_record)
                 
+                # Use random move on error if available
+                if current_random > 0:
+                    random_agent = RandomAgent(player=game.current_player)
+                    random_move = random_agent.get_best_move(game)
+                    if self.handle_move(game, random_move):
+                        if game.current_player == PLAYER1:
+                            p1_random -= 1
+                        else:
+                            p2_random -= 1
+                    else:
+                        return {
+                            'p1_agent': p1_agent.__class__.__name__,
+                            'p2_agent': p2_agent.__class__.__name__,
+                            'winner': PLAYER2 if game.current_player == PLAYER1 else PLAYER1,
+                            'moves': moves,
+                            'total_moves': move_count,
+                            'forfeit': True
+                        }
+                else:
+                    return {
+                        'p1_agent': p1_agent.__class__.__name__,
+                        'p2_agent': p2_agent.__class__.__name__,
+                        'winner': PLAYER2 if game.current_player == PLAYER1 else PLAYER1,
+                        'moves': moves,
+                        'total_moves': move_count,
+                        'forfeit': True
+                    }
+            
             winner = game.check_winner()
             if winner != EMPTY:
-                break
+                game.display_board()
+                return {
+                    'p1_agent': p1_agent.__class__.__name__,
+                    'p2_agent': p2_agent.__class__.__name__,
+                    'winner': winner,
+                    'moves': moves,
+                    'total_moves': move_count
+                }
                 
             game.current_player *= -1
             move_count += 1
             
             # Debug output
-            if move_count % 5 == 0:
+            if move_count % 1 == 0:
                 print(f"Move {move_count} completed")
+                print(game.board)
                 game.display_board()
-            
+        
         return {
             'p1_agent': p1_agent.__class__.__name__,
             'p2_agent': p2_agent.__class__.__name__,
-            'winner': winner,
+            'winner': EMPTY,  # Draw
             'moves': moves,
             'total_moves': move_count
         }
+
+
 
     def export_stats(self) -> Dict:
         """Export statistics in a format suitable for visualization"""
@@ -207,11 +250,59 @@ class GameAnalyzer:
                 for length, count in sorted(self.stats['game_lengths'].items())
             ]
         }
+    def run_benchmark(self, num_games: int, agent1, agent2) -> None:
+        """Run benchmark games between agents"""
+        print(f"Running {num_games} benchmark games...")
+        
+        for game_num in range(num_games):
+            print(f"\nGame {game_num + 1}/{num_games}")
+            game_record = self.play_game(agent1, agent2)
+            self.analyze_game(game_record)
+            print(f"Game {game_num + 1} complete: {game_record['p1_agent']} vs {game_record['p2_agent']}")
+            print(f"Winner: {game_record['winner']}")
+
+    def analyze_game(self, game_record: Dict) -> None:
+        """Analyze a single game record"""
+        self.stats['total_games'] += 1
+        
+        # Update matchup stats
+        winner = game_record['winner']
+        matchup = f"{game_record['p1_agent']} vs {game_record['p2_agent']}"
+        
+        if winner == PLAYER1:
+            self.stats['matchup_stats'][matchup]['wins'] += 1
+        elif winner == PLAYER2:
+            self.stats['matchup_stats'][matchup]['losses'] += 1
+        else:
+            self.stats['matchup_stats'][matchup]['draws'] += 1
+
+        # Analyze moves
+        for turn, move_data in enumerate(game_record['moves']):
+            phase = 'opening' if turn < 8 else 'midgame' if turn < 16 else 'endgame'
+            
+            if move_data['type'] == 'random':
+                self.stats['random_moves_used'][move_data['player']] += 1
+            
+            if move_data.get('time', 0) > 0.9:  # Close to timeout
+                self.stats['timeouts'][phase] += 1
+                
+            self.stats['move_stats'][phase][move_data['type']] += 1
+            
+        # Record game length
+        self.stats['game_lengths'][len(game_record['moves'])] += 1
 
 def main():
+    from random_agent import RandomAgent  # Your random agent
+    from minimax_agent import MinimaxAgent  # Your advanced agent
+    from smart_agent import SmartAgent
+    from DQN_agent import DQNAgent
     # Run benchmark
     analyzer = GameAnalyzer()
-    analyzer.run_benchmark(1)  # Run 1 game to start
+
+    p1 = DQNAgent(PLAYER1)
+    p2 = SmartAgent(PLAYER2)
+    p1.load("dqn_model_episode_100.pth")
+    analyzer.run_benchmark(10, p1, p2)  # Run 10 games
     
     # Export results
     with open('benchmark_results.json', 'w') as f:

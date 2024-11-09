@@ -4,9 +4,12 @@ import pandas as pd
 import plotly.express as px
 from benchmark import GameAnalyzer
 import os
+from smart_agent import SmartAgent
+from random_agent import RandomAgent
+from minimax_agent import MinimaxAgent
 
 
-NUM_TRIALS = 5
+NUM_TRIALS = 25
 st.set_page_config(
     page_title="Push Battle Analysis",
     layout="wide"
@@ -19,7 +22,7 @@ def load_or_generate_data():
             return json.load(f)
     else:
         analyzer = GameAnalyzer()
-        analyzer.run_benchmark(NUM_TRIALS)  # Run 1 game
+        analyzer.run_benchmark(NUM_TRIALS, SmartAgent, MinimaxAgent)  # Run 1 game
         stats = analyzer.export_stats()
         with open('benchmark_results.json', 'w') as f:
             json.dump(stats, f)
@@ -28,7 +31,7 @@ def load_or_generate_data():
 def run_new_benchmark():
     """Run a new benchmark and return results"""
     analyzer = GameAnalyzer()
-    analyzer.run_benchmark(NUM_TRIALS)  # Run 1 game
+    analyzer.run_benchmark(NUM_TRIALS, MinimaxAgent, MinimaxAgent)  # Run 1 game
     stats = analyzer.export_stats()
     with open('benchmark_results.json', 'w') as f:
         json.dump(stats, f)
